@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>WebSocket STOMP Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .box { margin-bottom: 15px; padding: 15px; border: 1px solid #ccc; border-radius: 5px; }
+        #logs { background: #f4f4f4; padding: 10px; height: 200px; overflow-y: scroll; border: 1px solid #ddd; }
+    </style>
+</head>
+<body>
+
+    <h2>WebSocket STOMP 테스트 클라이언트</h2>
+
+    <!-- 1. 연결 섹션 -->
+    <div class="box">
+        <button onclick="connect()">연결하기</button>
+        <button onclick="disconnect()" style="color: red;">연결 끊기</button>
+        <span id="status" style="font-weight: bold; margin-left: 10px; color: gray;">[연결 안 됨]</span>
+    </div>
+
+    <!-- 2. 메시지 전송 섹션 -->
+    <div class="box">
+        <h3>채팅 보내기</h3>
+        <label>닉네임: <input type="text" id="username" value="홍길동"></label><br><br>
+        <label>채팅방 ID: <input type="text" id="roomId" value="1"></label><br><br>
+        <label>내용: <input type="text" id="content" value="안녕하세요!" style="width: 300px;"></label>
+        <button onclick="sendChatMessage()">메시지 전송</button>
+    </div>
+
+    <!-- 3. 실시간 로그 및 수신 메시지 창 -->
+    <div class="box">
+        <h3>실시간 로그 및 받은 메시지</h3>
+        <div id="logs"></div>
+    </div>
+
+    <script>
+        let stompClient = null;
+
+        function printLog(message) {
+            const logsDiv = document.getElementById('logs');
+            logsDiv.innerHTML += `<div>[${new Date().toLocaleTimeString()}] ${message}</div>`;
+            logsDiv.scrollTop = logsDiv.scrollHeight; // 스크롤 맨 아래로
+        }
+
+        function connect() {
+            let socket = new WebSocket('ws://localhost:8080/ws-connect');
+            stompClient = Stomp.over(socket);
+
+            stompClient.connect({}, function (frame) {
+                // 연결 성공 시 UI 변경
+                document.getElementById('status').innerText = "[연결 완료!]";
+                document.getElementById('status').style.color = "green";
+                printLog("STOMP 서버 연결 성공: " + frame);
+
+                // 채팅방 구독 (기본 방 ID: 1)
+                let roomId = document.getElementById('roomId').value;
+                stompClient.subscribe('/topic/chat.' + roomId, function (message) {
+                    let res = JSON.parse(message.body);
+                    printLog(`<b>[수신 메시지]</b> ${res.username}: ${res.content}`);
+                });
+                printLog(`채팅방 [/topic/chat.${roomId}] 구독 완료!`);
+
+            }, function(error) {
+                document.getElementById('status').innerText = "[연결 실패]";
+                document.getElementById('status').style.color = "red";
+                printLog("에러 발생: " + error);
+            });
+        }
+
+        function disconnect() {
+            if (stompClient !== null) {
+                stompClient.disconnect();
+            }
+            document.getElementById('status').innerText = "[연결 끊김]";
+            document.getElementById('status').style.color = "gray";
+            printLog("서버 연결이 해제되었습니다.");
+        }
+
+        function sendChatMessage() {
+            if (!stompClient || !stompClient.connected) {
+                alert("먼저 웹소켓에 연결해주세요!");
+                return;
+            }
+
+            let username = document.getElementById('username').value;
+            let roomId = document.getElementById('roomId').value;
+            let content = document.getElementById('content').value;
+
+            let data = {
+                username: username,
+                content: content
+            };
+
+            // 서버의 @MessageMapping("/chat.{chatRoomId}") 로 전송
+            stompClient.send("/publish/chat." + roomId, {}, JSON.stringify(data));
+            printLog(`<b>[발신 메시지]</b> (${username} -> 방 ${roomId}): ${content}`);
+        }
+    </script>
+</body>
+</html>
